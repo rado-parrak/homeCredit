@@ -1,2 +1,7 @@
 *.csv
 01_raw_data/src/
+*.RData
+02_data_understanding/.Rproj.user/4D8331B1/rmd-outputs
+02_data_understanding/.Rproj.user/
+*.Rproj
+*.Rhistory

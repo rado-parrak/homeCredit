@@ -1,0 +1,379 @@
+---
+title: Data Understanding
+author: Rado
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Clean workspace and load libs:
+rm(list = ls())
+
+library(dplyr)
+library(kableExtra)
+library(ggplot2)
+library(gridExtra)
+```
+
+# Summary of things noticed in the data
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+issues <- c("Only documents 3,5, 6 and 8 submitted in some significant numbers."
+            , 'In the NAME_TYPE_SUITE there is "" level -> to be corrected in the data preparation'
+            , 'the "AMT_" variables contain outliers. To be considered in the data preparation & feature generation'
+            , 'AMT_TOTAL_INCOME has a couple of dominant income levels - to be taken up in the data preparation')
+
+knitr::kable(data.frame(nr. = seq(1,length(issues)), issues = issues)) %>%
+  kable_styling(font_size = 10, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, width = "1cm", border_right = T) %>%
+  column_spec(2, width = "7cm")
+```
+
+# Data Model
+![](../01_raw_data/data_model.png)
+
+# Column descriptions
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+knitr::kable(read.csv('../01_raw_data/HomeCredit_columns_description.csv', header = T)[,2:5]) %>%
+  kable_styling(font_size = 10, bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(1, width = "2cm", border_right = T) %>%
+  column_spec(2, width = "2cm") %>%
+  column_spec(3, width = "5cm") %>%
+  column_spec(4, width = "5cm")
+```
+
+# Individual Data Inputs
+
+## application_train.csv | application_test.csv
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+checkedColumns <- 0
+
+appDataTrain  <- read.csv('../01_raw_data/application_train.csv', header = T) %>% mutate(dataPartition = 'train')
+appDataTest   <- read.csv('../01_raw_data/application_test.csv', header = T) %>% 
+  mutate(TARGET = NA) %>%
+  mutate(dataPartition = 'test') %>%
+  dplyr::select(colnames(appDataTrain))
+  
+appData <- rbind(appDataTrain, appDataTest)
+rm(appDataTrain, appDataTest)
+```
+
+```{r echo=TRUE, warning = FALSE, message = FALSE}
+# Scan variables
+str(appData, list.len=ncol(appData))
+
+# Uniqueness of the key
+length(appData$SK_ID_CURR) == length(unique(appData$SK_ID_CURR))
+```
+### NA percetage per attribute
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+NAsummary <- as.data.frame(sapply(dplyr::filter(appData, dataPartition == 'train'), function(x) sum(is.na(x)))) 
+colnames(NAsummary) <- c('cNA')
+
+NAsummary <- mutate(NAsummary, attribute = row.names(NAsummary)) %>%
+  mutate(cRows = nrow(dplyr::filter(appData, dataPartition == 'train'))) %>%
+  mutate(NApercentage = cNA/cRows) %>%
+  filter(NApercentage > 0.05)
+
+p1 <- ggplot(data=NAsummary, aes(x=reorder(attribute,-NApercentage), y=NApercentage))+
+      geom_bar(stat='identity') +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+      ggtitle("NA percentage | train")
+
+NAsummary <- as.data.frame(sapply(dplyr::filter(appData,dataPartition == 'test'), function(x) sum(is.na(x)))) 
+colnames(NAsummary) <- c('cNA')
+
+NAsummary <- mutate(NAsummary, attribute = row.names(NAsummary)) %>%
+  mutate(cRows = nrow(dplyr::filter(appData, dataPartition == 'test'))) %>%
+  mutate(NApercentage = cNA/cRows) %>%
+  filter(NApercentage > 0.05)
+
+p2 <- ggplot(data=NAsummary, aes(x=reorder(attribute,-NApercentage), y=NApercentage))+
+      geom_bar(stat='identity') +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+      ggtitle("NA percentage | test")
+
+print(p1)
+print(p2)
+```
+
+### TARGET EVENT RATE (in train)
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+ggplot(data = appData[!is.na(appData$TARGET),], aes(x = TARGET)) + 
+          geom_bar(aes(y = (..count..)/sum(..count..))) + 
+          scale_y_continuous(labels=scales::percent) +
+  ylab("relative frequencies")
+
+checkedColumns <- checkedColumns + 1
+```
+
+### FLAGS
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+## non-document related
+namess          <- c('SK_ID_CURR','dataPartition',colnames(appData)[grepl('FLAG', colnames(appData))])
+dataForPlot   <- appData[,namess[1:10]] %>% reshape2::melt(id.vars = c('SK_ID_CURR','dataPartition'))
+dataForPlot$value[dataForPlot$value == "Y"] <- '1'
+dataForPlot$value[dataForPlot$value == "N"] <- '0'
+dataForPlot$value[dataForPlot$value == 1]   <- '1'
+dataForPlot$value[dataForPlot$value == 0]   <- '0'
+dataForPlot$value[is.na(dataForPlot$value)] <- 'Unknown'
+dataForPlot$value <- as.factor(dataForPlot$value)
+
+dataForPlot <- dplyr::group_by(dataForPlot, dataPartition, variable, value) %>% 
+  dplyr::summarize(countt = length(SK_ID_CURR)) %>%
+  dplyr::ungroup() %>% 
+  dplyr::left_join(y = (dplyr::group_by(dataForPlot,dataPartition, variable) %>% 
+                          dplyr::summarize(count_agg = length(SK_ID_CURR)) %>%
+                          dplyr::ungroup())
+                   , by = c('dataPartition', 'variable')) %>%
+  dplyr::mutate(percentage = countt / count_agg)
+  
+ggplot(data = dataForPlot, aes(x = variable, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = value)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + facet_grid(. ~ dataPartition)
+
+knitr::kable(reshape2::dcast(dataForPlot, variable~dataPartition+value, value.var = "percentage")) %>% kable_styling(font_size = 10)
+knitr::kable(reshape2::dcast(dataForPlot, variable~dataPartition+value, value.var = "countt")) %>% kable_styling(font_size = 10)
+
+## document related
+dataForPlot   <- appData[,namess[c(1,2,11:29)]] %>% reshape2::melt(id.vars = c('SK_ID_CURR','dataPartition'))
+dataForPlot$value[dataForPlot$value == "Y"] <- '1'
+dataForPlot$value[dataForPlot$value == "N"] <- '0'
+dataForPlot$value[dataForPlot$value == 1]   <- '1'
+dataForPlot$value[dataForPlot$value == 0]   <- '0'
+dataForPlot$value[is.na(dataForPlot$value)] <- 'Unknown'
+dataForPlot$value <- as.factor(dataForPlot$value)
+
+dataForPlot <- dplyr::group_by(dataForPlot, dataPartition, variable, value) %>% 
+  dplyr::summarize(countt = length(SK_ID_CURR)) %>%
+  dplyr::ungroup() %>% 
+  dplyr::left_join(y = (dplyr::group_by(dataForPlot,dataPartition, variable) %>% 
+                          dplyr::summarize(count_agg = length(SK_ID_CURR)) %>%
+                          dplyr::ungroup())
+                   , by = c('dataPartition', 'variable')) %>%
+  dplyr::mutate(percentage = countt / count_agg)
+  
+ggplot(data = dataForPlot, aes(x = variable, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = value)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + facet_grid(. ~ dataPartition)
+
+knitr::kable(reshape2::dcast(dataForPlot, variable~dataPartition+value, value.var = "percentage")) %>% kable_styling(font_size = 10)
+knitr::kable(reshape2::dcast(dataForPlot, variable~dataPartition+value, value.var = "countt")) %>% kable_styling(font_size = 10)
+
+checkedColumns <- checkedColumns + length(namess) - 2
+```
+
+### NAMES
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('dataPartition', colnames(appData)[grepl("NAME_", colnames(appData))])
+dataForPlot     <- appData[,namess] %>% reshape2::melt(id.vars = 'dataPartition')
+dataForPlot$value[dataForPlot$value == ""] <- "Unknown"
+dataForPlot$value <- as.factor(dataForPlot$value)
+
+for(varToPlot in namess[2:length(namess)]){
+  dataForPlotSel <- dplyr::filter(dataForPlot, variable == varToPlot) %>%
+    dplyr::group_by(dataPartition,value) %>% 
+    dplyr::summarize(countt = length(value)) %>%
+    dplyr::ungroup() %>%
+    dplyr::left_join(y = (dplyr::filter(dataForPlot, variable == varToPlot) %>%
+                            dplyr::group_by(dataPartition) %>% 
+                            dplyr::summarize(count_agg = length(value)) %>%
+                            dplyr::ungroup())
+                     , by = c('dataPartition')) %>%
+    dplyr::mutate(percentage = countt / count_agg)
+  
+  p <- ggplot(data = dataForPlotSel, aes(x = value, y = percentage)) +
+        geom_bar(stat = "identity", aes(fill = value)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))  +
+        facet_grid(.~dataPartition) +
+        ggtitle(varToPlot)
+  
+  print(p)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+
+### Amounts
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('dataPartition', colnames(appData)[grepl("AMT_", colnames(appData))])
+dataForPlot     <- appData
+
+for(varToPlot in namess[2:5]){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+dataForPlot     <- appData[,namess[c(1,6:11)]] %>% reshape2::melt(id.vars = 'dataPartition')
+
+for(varToPlot in namess[6:11]){
+  dataForPlotSel <- dplyr::filter(dataForPlot, variable == varToPlot) %>%
+    dplyr::group_by(dataPartition,value) %>%
+    dplyr::summarize(countt = length(value)) %>%
+    dplyr::ungroup() %>%
+    dplyr::left_join(y = (dplyr::filter(dataForPlot, variable == varToPlot) %>%
+                            dplyr::group_by(dataPartition) %>%
+                            dplyr::summarize(count_agg = length(value)) %>%
+                            dplyr::ungroup())
+                     , by = c('dataPartition')) %>%
+    dplyr::mutate(percentage = countt / count_agg)
+
+  p <- ggplot(data = dataForPlotSel, aes(x = value, y = percentage)) +
+        geom_bar(stat = "identity", aes(fill = value)) +
+        theme(axis.text.x = element_text(angle = 0, hjust = 1))  +
+        facet_grid(.~dataPartition) +
+        ggtitle(varToPlot)
+
+  print(p)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+
+### Living related
+
+#### Averages
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('dataPartition', colnames(appData)[grepl("_AVG", colnames(appData))])
+dataForPlot     <- appData[,namess]
+
+for(varToPlot in namess[2:length(namess)]){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=9), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=9), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+#### Modes
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('dataPartition', colnames(appData)[grepl("_MODE", colnames(appData))])[1:15]
+dataForPlot     <- appData[,namess]
+
+for(varToPlot in namess[2:length(namess)]){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+#### Medians
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('dataPartition', colnames(appData)[grepl("_MEDI", colnames(appData))])
+dataForPlot     <- appData[,namess]
+
+for(varToPlot in namess[2:length(namess)]){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=9), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+### External sources
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('dataPartition', colnames(appData)[grepl("EXT_", colnames(appData))])
+dataForPlot     <- appData[,namess]
+
+for(varToPlot in namess[2:length(namess)]){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density.., fill = dataPartition), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=9), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+
+### Check if all columns has been explored
+```{r echo=FALSE, warning = FALSE, message = FALSE, results='markup'}
+print(paste0('Columns to be checked : ',ncol(appData)))
+print(paste0('Checked columns : ', checkedColumns + 2))
+```
+
+
+
+## bureau.csv
+
+## POS_CASH_balance.csv
+
+## previous_application.csv
+
+
+
+
