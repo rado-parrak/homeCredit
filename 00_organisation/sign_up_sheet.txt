@@ -1,0 +1,76 @@
+=============================================================================================
+		             ==== DIVIDE & CONQUER sign up sheet ====
+=============================================================================================
+
+Intro:
+The idea is to divide the work and paralelize (both human- and machine-efforts) as much as possible. Please sign up for the for the phase you are / will be working on, such that we do not step over each others feet.
+
+---------------------------------------------------------------------------------------------
+					Phase dropdown
+---------------------------------------------------------------------------------------------
+
+1. Data Understanding - EDA (Exploratory Data Analysis)
+
+	1.1. application_train.csv / application_test.csv 		| RADO
+	1.2. bureau.csv							| RADO
+	1.3. bureau_balance.csv 					| ?
+	1.4. previous_application.csv					| ?
+	1.5. POS_CASH_balance.csv					| ?
+	1.6. instalments_payment.csv					| ?
+	1.7. credit_card_balance.csv					| ?
+
+2. Data Preparation
+
+	2.1. 'Sanitizing' data per input file						
+		= treatment of NAs, outliers, custom features based on gut-feeling and/or statistical analysis (binning, scaling...)
+		
+		2.1.1 application_train.csv / application_test.csv 	| ?
+		2.1.2 bureau.csv					| ?
+		2.1.3 bureau_balance.csv 				| ?
+		2.1.4 previous_application.csv				| ?
+		2.1.5 POS_CASH_balance.csv				| ?
+		2.1.6 instalments_payment.csv				| ?
+		2.1.7 credit_card_balance.csv				| ?	
+	
+	2.2. Aggregation for master file / key (= SK_ID_CURR) 			
+		= this concerns tables with primary key different from 'SK_ID_CURR'
+		= features coming from aggregation might also be helpful e.g. "mean, max, mean ... group by "- type of stuff
+
+		2.2.1 bureau.csv					| ?
+	 	2.2.2 bureau_balance.csv				| ?
+		2.1.3 previous_application.csv				| ?
+		2.1.4 POS_CASH_balance.csv				| ?
+		2.1.5 instalments_payment.csv				| ?
+		2.1.6 credit_card_balance.csv				| ?
+
+	2.3 Attribute file generation (
+		2.3.1 (left-) joining all input files to master table 	| ?
+		= after this step, we should have a 'nice' wide table 
+		with 1 column being target, 1 column SK_ID_CURR and the
+		rest are loan/loan applicants attributes.
+		= outputs: attribute_file_train.csv, attribute_file_test.csv
+	
+	2.4. Feature generation
+		2.4.1 Automated Feature Generation 			| RADO
+		2.4.2 Custom Feature Generation				| ?
+		= Both to be applied on attribute_file_train and *_test
+		= output: predictor_base_train.csv, predictor_base_test.csv
+
+	2.5. Feature pre-selection
+		2.5.1. from Automated Feature Generation 		| RADO
+
+3. Modelling
+
+	3.1. Benchmark model						| ?
+		= the simplest possible LOGIT model using all features from predictor_base_train.csv
+	3.2. Regression-based models					| ?
+		= Logit, LARS, LASSO, PLS, distriminant-based regs., ...
+	3.3. Tree-based
+		3.3.1 Boosting (GBM, XGboost)				| ?
+		3.3.2 Bagging						| ?
+	3.4. Support-vector-machines 					| RADO
+	3.5. Neural networks and deep learning				| ?
+	3.6. Models ensambles						| ?
+ 
+
+
