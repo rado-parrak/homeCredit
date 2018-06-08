@@ -24,7 +24,7 @@ The idea is to divide the work and paralelize (both human- and machine-efforts) 
 	2.1. 'Sanitizing' data per input file						
 		= treatment of NAs, outliers, custom features based on gut-feeling and/or statistical analysis (binning, scaling...)
 		
-		2.1.1 application_train.csv / application_test.csv 	| ?
+		2.1.1 application_train.csv / application_test.csv 	| RADO
 		2.1.2 bureau.csv					| ?
 		2.1.3 bureau_balance.csv 				| ?
 		2.1.4 previous_application.csv				| ?
