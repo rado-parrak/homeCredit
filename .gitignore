@@ -6,3 +6,4 @@
 *.Rproj
 *.Rhistory
 03_data_preparation/.Rproj.user/
+04_modelling/04_1_benchmark_model/.Rproj.user/

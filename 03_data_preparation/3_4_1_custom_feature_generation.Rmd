@@ -106,6 +106,6 @@ for(namee in sel_qnames){
 }
 
 # save output
-write.csv(output, file='./predictor_base/predictor_base.csv')
+write.csv(output, file='./predictor_base/predictor_base_train.csv')
 ```
 Output saved to '03_data_preparation/predictor_base'.

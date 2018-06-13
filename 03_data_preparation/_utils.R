@@ -106,4 +106,10 @@ indicateOutliers <- function(inputData){
   return(inputData)
 }
 
+# CAST VARIABLES
+castVariables <- function(inputData){
+  
+  
+  
+}
 
