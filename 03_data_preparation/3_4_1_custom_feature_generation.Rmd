@@ -1,0 +1,111 @@
+---
+title: Custom Feature Generation
+author: Rado
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Clean workspace and load libs:
+rm(list = ls())
+library(dplyr)
+library(smbinning)
+library(ggplot2)
+
+sdata <- read.csv('./sanitized_data/s_application_train.csv', header = T)
+```
+# TO DOs:
+
+    1. Currently WOE, IV and pre-selection only for quantitative. Similar should be done for categorical and indicators too...
+
+# Intro
+
+## Goal
+Generation of features from loan application-level attributes
+
+## Inputs
+    - application_train.csv 
+    - application_test.csv
+    - ...
+
+## Outputs
+    - predictor_base_train.csv
+    - predictor_base_test.csv
+
+## Settings
+```{r echo=TRUE, warning = FALSE, message = FALSE}
+# Settings
+pVal    <- 0.05 #pval for smbinning
+IVtresh <- 0.05
+```
+
+# Variable imporance based on WOE and IV
+
+## Overview
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# Quantitative variables
+sdata_q <- dplyr::select(sdata, starts_with("Q_")) %>%
+  dplyr::mutate(T_TARGET = sdata$T_TARGET)
+resultContainer <- list()
+ivContainer <- data.frame()
+
+qnames <- colnames(sdata_q)[colnames(sdata_q) != "T_TARGET"]
+for(varName in qnames){
+  print(paste0("Binning, calculating WOE and IV for: ", varName))
+  sdata_q[,varName] <- as.numeric(sdata_q[,varName])
+  resultContainer[[varName]] <- smbinning(df=sdata_q, y="T_TARGET",x=varName,p=pVal)
+  if(resultContainer[[varName]] != "No significant splits"){
+    ivContainer <- rbind(ivContainer, data.frame(variable = varName, IV = resultContainer[[varName]]$iv))  
+  } else{
+    ivContainer <- rbind(ivContainer, data.frame(variable = varName, IV = NA))
+  }
+}
+
+
+ivContainer <- dplyr::arrange(ivContainer, desc(IV))
+dataForPlot <- dplyr::filter(ivContainer, IV >= IVtresh)
+
+ggplot(data = dataForPlot, aes(x = reorder(variable, IV), y = IV)) +
+  geom_bar(stat = 'identity') +
+  coord_flip()
+
+```
+
+## Results for those with IV > IVtresh
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+sel_qnames <- dplyr::filter(ivContainer, IV >= IVtresh) %>% 
+  dplyr::select(variable)
+sel_qnames <- as.character(sel_qnames$variable)
+
+for(varName in sel_qnames){
+  par(mfrow=c(2,2))
+  boxplot(sdata_q[,varName]~sdata_q$T_TARGET,horizontal=T, frame=F, col="lightgray",main="Distribution")
+  smbinning.plot(resultContainer[[varName]],option="dist")
+  smbinning.plot(resultContainer[[varName]],option="badrate")
+  smbinning.plot(resultContainer[[varName]],option="WoE")
+  mtext(varName, side = 3, line = -13, outer = TRUE)
+}
+```
+
+## (bucketize and) Save
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+# take all variables except quantitative
+output <- cbind(T_TARGET = sdata$T_TARGET,sdata[,!(colnames(sdata) %in% colnames(sdata_q))])
+
+# add only the important original variables
+output <- cbind(output, sdata[,sel_qnames])
+
+# add also the binned original variables
+for(namee in sel_qnames){
+  new_namee <- paste0('B_', namee)
+  output[,new_namee] <- cut(sdata[,namee], breaks = resultContainer[[namee]]$cuts)
+}
+
+# save output
+write.csv(output, file='./predictor_base/predictor_base.csv')
+```
+Output saved to '03_data_preparation/predictor_base'.

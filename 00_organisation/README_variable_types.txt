@@ -17,3 +17,4 @@ Variable & Prefixes:
 4. CN_		| CATEGORICAL NOMINAL variable (except for the INDICATORs)		(used in modelling)
 5. CO_		| CATEGORICAL ORDINAL variable (except for the INDICATORs)		(used in modelling)
 6. Q_		| QUANTITATIVE variable (a.k.a interval)				(used in modelling)
+7. B_		| BUCKETED/BINNED feature						(used in modelling)

@@ -52,7 +52,7 @@ The idea is to divide the work and paralelize (both human- and machine-efforts) 
 	
 	2.4. Feature generation
 		2.4.1 Automated Feature Generation 			| RADO
-		2.4.2 Custom Feature Generation				| ?
+		2.4.2 Custom Feature Generation				| RADO, 
 		= Both to be applied on attribute_file_train and *_test
 		= output: predictor_base_train.csv, predictor_base_test.csv
 
