@@ -109,7 +109,25 @@ indicateOutliers <- function(inputData){
 # CAST VARIABLES
 castVariables <- function(inputData){
   
+  # intervals / quantitative:
+  qnames        <- colnames(dplyr::select(inputData, dplyr::starts_with('Q_')))
+  qnames        <- c(qnames, colnames(dplyr::select(inputData, dplyr::starts_with('ID_'))))
+  outputData_q  <- as.data.frame(sapply(inputData[,qnames], as.numeric))
   
+  # factors: Target, Indicators, Categorical Nominal 
+  fnames        <- colnames(dplyr::select(inputData, dplyr::starts_with('T_')))
+  fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('I_'))))
+  fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('CN_'))))
+  fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('B_'))))
+  outputData_f  <- as.data.frame(sapply(inputData[,fnames], as.factor))
   
+  # ordinals:
+  # TODO: See how this can be done such that we're sure that the order is correct
+  onames        <- colnames(dplyr::select(inputData, dplyr::starts_with('CO_')))
+  outputData_o  <- as.data.frame(sapply(inputData[,onames], as.ordered))
+  
+  allnames <- c(qnames,fnames,onames)
+  print(paste0(length(allnames), ' variables casted from ', length(colnames(inputData)),'!'))
+  return(cbind(outputData_q, outputData_f, outputData_o))
 }
 
