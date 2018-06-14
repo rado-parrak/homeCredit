@@ -703,4 +703,123 @@ checkedColumns <- checkedColumns + length(namess) - 1
 
 
 
+## credit_card_balance.csv
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+rm(appData)
+checkedColumns <- 0
+namessContainer <- c("SK_ID_CURR", 'SK_ID_BUREAU')
+ccbData  <- read.csv('../01_raw_data/credit_card_balance.csv', header = T)
+```
+
+```{r echo=TRUE, warning = FALSE, message = FALSE}
+# Scan variables
+str(ccbData, list.len=ncol(ccbData))
+
+# Uniqueness of the key
+print('No unique key, combination of SK_ID_PREV and SK_ID_CURR is unique ==> Link table.')
+```
+
+
+### Amounts
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c(colnames(ccbData)[grepl("AMT_", colnames(ccbData))])
+namessContainer <- c(namessContainer, namess)
+dataForPlot     <- ccbData
+
+for(varToPlot in namess){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density..), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density..), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+
+### Intervals
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('MONTHS_BALANCE'
+                     , 'CNT_DRAWINGS_ATM_CURRENT'
+                     , 'CNT_DRAWINGS_CURRENT'
+                     , 'CNT_DRAWINGS_OTHER_CURRENT'
+                     , 'CNT_DRAWINGS_POS_CURRENT'
+                     , 'CNT_INSTALMENT_MATURE_CUM'
+                     , 'SK_DPD'
+                     , 'SK_DPD_DEF'
+                     )
+
+namessContainer <- c(namessContainer, namess)
+dataForPlot     <- ccbData[,namess]
+
+for(varToPlot in namess[2:length(namess)]){
+  p1 <- ggplot(data = dataForPlot) + 
+        geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density..), position="identity", alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=7), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Scaled histogram | ', varToPlot))
+  
+  p2 <- ggplot(data = dataForPlot) +
+        geom_density(aes(x=dataForPlot[,varToPlot],y=..density..), kernel = 'gaussian', alpha = 0.5) +
+        scale_x_continuous(labels = scales::comma) +
+        scale_y_continuous(labels = scales::comma) +
+        xlab(varToPlot) +
+        theme(legend.position="top", legend.text=element_text(size=9), plot.title = element_text(size = 9, face = "bold")) +
+        ggtitle(paste0('Density plot | ', varToPlot))
+  
+  grid.arrange(p1,p2, ncol=2)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+
+### Factors
+
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+namess          <- c('SK_ID_PREV','SK_ID_CURR','NAME_CONTRACT_STATUS')
+
+namessContainer <- c(namessContainer, namess)
+dataForPlot     <- ccbData[,namess] %>%  
+  tidyr::unite('unique_ID','SK_ID_PREV', 'SK_ID_CURR', sep = "_") %>% 
+  reshape2::melt(id.vars = 'unique_ID')
+dataForPlot$value[dataForPlot$value == ""] <- "Unknown"
+dataForPlot$value <- as.factor(dataForPlot$value)
+
+for(varToPlot in namess[3:length(namess)]){
+  dataForPlotSel <- dplyr::filter(dataForPlot, variable == varToPlot) %>%
+    dplyr::group_by(value) %>% 
+    dplyr::summarize(countt = length(value)) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(count_agg = as.numeric(dplyr::filter(dataForPlot, variable == varToPlot) %>%
+                            dplyr::summarize(count_agg = length(value)) %>%
+                            dplyr::ungroup())) %>%
+    dplyr::mutate(percentage = countt / count_agg)
+  
+  p <- ggplot(data = dataForPlotSel, aes(x = value, y = percentage)) +
+        geom_bar(stat = "identity", aes(fill = value)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        ggtitle(varToPlot)
+  
+  print(p)
+}
+
+checkedColumns <- checkedColumns + length(namess) - 1
+```
+
 
