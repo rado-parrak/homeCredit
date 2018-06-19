@@ -5,7 +5,14 @@
 #
 # Author(s): Rado,
 # ====================================================================================== #
+if(!require(dplyr)){
+  install.packages("dplyr")
+}
+if(!require(smbinning)){
+  install.packages("smbinning")
+}
 library(dplyr)
+library(smbinning)
 
 # Suggest which variables might be categorical
 suggestCategorical <- function(inputData, maxLevels){
@@ -129,5 +136,17 @@ castVariables <- function(inputData){
   allnames <- c(qnames,fnames,onames)
   print(paste0(length(allnames), ' variables casted from ', length(colnames(inputData)),'!'))
   return(cbind(outputData_q, outputData_f, outputData_o))
+}
+
+# doSmBinning wraper for paralelization
+doSmBinning <- function(varName, inputData,pVal,IVtresh){
+  print(paste0("Binning, calculating WOE and IV for: ", varName))
+  inputData[,varName] <- as.numeric(inputData[,varName])
+  res <- smbinning(df=inputData, y="T_TARGET",x=varName,p=pVal)
+  if(res != "No significant splits"){
+    if(res$iv >= IVtresh){
+      return(res)
+    }    
+  }
 }
 

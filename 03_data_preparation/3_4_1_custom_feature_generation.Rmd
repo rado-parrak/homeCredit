@@ -11,9 +11,12 @@ output:
 ```{r echo=FALSE, warning = FALSE, message = FALSE}
 # Clean workspace and load libs:
 rm(list = ls())
+library(plyr)
 library(dplyr)
 library(smbinning)
 library(ggplot2)
+library(doParallel)
+source('_utils.R')
 
 sdata <- read.csv('./sanitized_data/s_application_train.csv', header = T)
 ```
@@ -50,24 +53,54 @@ IVtresh <- 0.05
 # Quantitative variables
 sdata_q <- dplyr::select(sdata, starts_with("Q_")) %>%
   dplyr::mutate(T_TARGET = sdata$T_TARGET)
-resultContainer <- list()
-ivContainer <- data.frame()
+ivContainer     <- list()
 
-qnames <- colnames(sdata_q)[colnames(sdata_q) != "T_TARGET"]
-for(varName in qnames){
-  print(paste0("Binning, calculating WOE and IV for: ", varName))
-  sdata_q[,varName] <- as.numeric(sdata_q[,varName])
-  resultContainer[[varName]] <- smbinning(df=sdata_q, y="T_TARGET",x=varName,p=pVal)
-  if(resultContainer[[varName]] != "No significant splits"){
-    ivContainer <- rbind(ivContainer, data.frame(variable = varName, IV = resultContainer[[varName]]$iv))  
+qnames            <- colnames(sdata_q)[colnames(sdata_q) != "T_TARGET"]
+results_smBinning <- list()
+
+# RADO: The idea here is to run various 'optimal binning' algos, save results,
+# then select only those variables and "cuts" from a given binning algo that 
+# give IV larger than IVtresh.
+cl <- makeCluster(detectCores() - 1)
+registerDoParallel(cl)
+nParts <- 8
+for(j in 1:nParts){ #this outer loop is there due to heap insuficiency
+  minn <- (j-1)*ceiling(ncol(sdata_q)/nParts) + 1
+  maxx <- min((j)*ceiling(ncol(sdata_q)/nParts),length(qnames))
+  aux <- foreach(i = minn:maxx, .packages = c('smbinning')) %dopar% doSmBinning(qnames[[i]], sdata_q, pVal, IVtresh)
+  print(paste0('=== Chunk >> ', minn, ':', maxx, ' from ', length(qnames),'. ==='))
+  print(paste0('Start: ', Sys.time()))
+        
+  if(j == 1){
+    results_smBinning <- aux
   } else{
-    ivContainer <- rbind(ivContainer, data.frame(variable = varName, IV = NA))
+    results_smBinning <- c(results_smBinning, aux)
   }
+  results_smBinning <- plyr::compact(results_smBinning)
+  rm(aux)
+  print(paste0('End: ', Sys.time()))
+}
+stopCluster(cl)
+
+# save the interesting vars from 'smBinning' to IV container
+for(res in results_smBinning){
+    ivContainer[[colnames(sdata_q)[res$col_id]]]$IV             <- res$iv
+    ivContainer[[colnames(sdata_q)[res$col_id]]]$cuts           <- res$cuts
+    ivContainer[[colnames(sdata_q)[res$col_id]]]$binningMethod  <- 'smBinning'
 }
 
-
-ivContainer <- dplyr::arrange(ivContainer, desc(IV))
-dataForPlot <- dplyr::filter(ivContainer, IV >= IVtresh)
+# prepare data for plot
+counter <- 0
+for(el in ivContainer){
+  counter <- counter +1
+  if(counter == 1){
+    dataForPlot <- data.frame(variable = paste0(names(ivContainer)[counter], ' | ', el$binningMethod)
+                              , IV = el$IV)
+  }else{
+    dataForPlot <- rbind(dataForPlot, data.frame(variable = paste0(names(ivContainer)[counter], ' | ', el$binningMethod)
+                              , IV = el$IV))
+  }
+}
 
 ggplot(data = dataForPlot, aes(x = reorder(variable, IV), y = IV)) +
   geom_bar(stat = 'identity') +
@@ -77,16 +110,14 @@ ggplot(data = dataForPlot, aes(x = reorder(variable, IV), y = IV)) +
 
 ## Results for those with IV > IVtresh
 ```{r echo=FALSE, warning = FALSE, message = FALSE}
-sel_qnames <- dplyr::filter(ivContainer, IV >= IVtresh) %>% 
-  dplyr::select(variable)
-sel_qnames <- as.character(sel_qnames$variable)
-
-for(varName in sel_qnames){
+sel_qnames <- names(ivContainer)
+for(i in 1:length(results_smBinning)){
   par(mfrow=c(2,2))
+  varName <- names(ivContainer)[i]
   boxplot(sdata_q[,varName]~sdata_q$T_TARGET,horizontal=T, frame=F, col="lightgray",main="Distribution")
-  smbinning.plot(resultContainer[[varName]],option="dist")
-  smbinning.plot(resultContainer[[varName]],option="badrate")
-  smbinning.plot(resultContainer[[varName]],option="WoE")
+  smbinning.plot(results_smBinning[[i]],option="dist")
+  smbinning.plot(results_smBinning[[i]],option="badrate")
+  smbinning.plot(results_smBinning[[i]],option="WoE")
   mtext(varName, side = 3, line = -13, outer = TRUE)
 }
 ```
@@ -100,9 +131,10 @@ output <- cbind(T_TARGET = sdata$T_TARGET,sdata[,!(colnames(sdata) %in% colnames
 output <- cbind(output, sdata[,sel_qnames])
 
 # add also the binned original variables
-for(namee in sel_qnames){
-  new_namee <- paste0('B_', namee)
-  output[,new_namee] <- cut(sdata[,namee], breaks = resultContainer[[namee]]$cuts)
+for(i in 1:length(results_smBinning)){
+  namee               <- colnames(sdata_q)[results_smBinning[[i]]$col_id]
+  new_namee           <- paste0('B_', namee, '_v1')
+  output[,new_namee]  <- findInterval(sdata[,namee], vec = results_smBinning[[i]]$cuts) 
 }
 
 # save output
