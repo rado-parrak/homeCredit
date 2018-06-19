@@ -643,7 +643,7 @@ namess          <- c('MONTHS_BALANCE'
 namessContainer <- c(namessContainer, namess)
 dataForPlot     <- posData[,namess]
 
-for(varToPlot in namess[2:length(namess)]){
+for(varToPlot in namess[1:length(namess)]){
   p1 <- ggplot(data = dataForPlot) + 
         geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density..), position="identity", alpha = 0.5) +
         scale_x_continuous(labels = scales::comma) +
@@ -663,7 +663,7 @@ for(varToPlot in namess[2:length(namess)]){
   grid.arrange(p1,p2, ncol=2)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess)
 ```
 
 ### Factors
@@ -696,7 +696,7 @@ for(varToPlot in namess[3:length(namess)]){
   print(p)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess) - 2
 ```
 
 ### Check if all columns has been explored
@@ -768,7 +768,7 @@ for(varToPlot in namess[3:length(namess)]){
   print(p)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess) - 2
 ```
 
 ### Intervals
@@ -794,7 +794,7 @@ namess          <- c('AMT_ANNUITY'
 namessContainer <- c(namessContainer, namess)
 dataForPlot     <- prevappData[,namess]
 
-for(varToPlot in namess[2:length(namess)]){
+for(varToPlot in namess[1:length(namess)]){
   p1 <- ggplot(data = dataForPlot) + 
         geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density..), position="identity", alpha = 0.5) +
         scale_x_continuous(labels = scales::comma) +
@@ -814,7 +814,7 @@ for(varToPlot in namess[2:length(namess)]){
   grid.arrange(p1,p2, ncol=2)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess)
 ```
 
 ### Factors
@@ -856,7 +856,7 @@ for(varToPlot in namess[3:length(namess)]){
   print(p)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess) - 2
 ```
 
 ### Check if all columns has been explored
@@ -882,7 +882,6 @@ str(ccbData, list.len=ncol(ccbData))
 print('No unique key, combination of SK_ID_PREV and SK_ID_CURR is unique ==> Link table.')
 ```
 
-
 ### Amounts
 
 ```{r echo=FALSE, warning = FALSE, message = FALSE}
@@ -890,7 +889,7 @@ namess          <- c(colnames(ccbData)[grepl("AMT_", colnames(ccbData))])
 namessContainer <- c(namessContainer, namess)
 dataForPlot     <- ccbData
 
-for(varToPlot in namess){
+for(varToPlot in namess[1:length(namess)]){
   p1 <- ggplot(data = dataForPlot) + 
         geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density..), position="identity", alpha = 0.5) +
         scale_x_continuous(labels = scales::comma) +
@@ -910,7 +909,7 @@ for(varToPlot in namess){
   grid.arrange(p1,p2, ncol=2)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess)
 ```
 
 ### Intervals
@@ -929,7 +928,7 @@ namess          <- c('MONTHS_BALANCE'
 namessContainer <- c(namessContainer, namess)
 dataForPlot     <- ccbData[,namess]
 
-for(varToPlot in namess[2:length(namess)]){
+for(varToPlot in namess[1:length(namess)]){
   p1 <- ggplot(data = dataForPlot) + 
         geom_histogram(breaks=seq(quantile(dataForPlot[,varToPlot],0.05, na.rm = TRUE), quantile(dataForPlot[,varToPlot],0.90, na.rm = TRUE), length.out	= 30), aes(x=dataForPlot[,varToPlot],y=..density..), position="identity", alpha = 0.5) +
         scale_x_continuous(labels = scales::comma) +
@@ -949,7 +948,7 @@ for(varToPlot in namess[2:length(namess)]){
   grid.arrange(p1,p2, ncol=2)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess)
 ```
 
 ### Factors
@@ -982,7 +981,7 @@ for(varToPlot in namess[3:length(namess)]){
   print(p)
 }
 
-checkedColumns <- checkedColumns + length(namess) - 1
+checkedColumns <- checkedColumns + length(namess) - 2
 ```
 
 ### Check if all columns has been explored
