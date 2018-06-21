@@ -92,7 +92,13 @@ datta <- extendColumnNamesByTypes(datta
                                   , quantitative = quantitative
                                   , categoricalNominal = categoricalNominal
                                   , categoricalOrdinal = categoricalOrdinal)
-
+## Economic-sense-based:
+# i.) Day cannot be < 0 and larger than 100 years => 36500 days.
+daysCols <- colnames(dplyr::select(datta, contains('DAYS')))
+for(varName in daysCols){
+  datta[which(datta[,varName] > 365*100),varName] <- NA
+  datta[which(datta[,varName] < -365*100),varName] <- NA
+}
 ## 2. MISSING VALUES IMPUTATION
 # 2.i) target
 any(is.na(datta$T_TARGET)) 
@@ -103,23 +109,66 @@ any(is.na(datta$ID_SK_ID_CURR))
 # - no need
 
 # 2.iii) INDICATORs
-any(sapply(dplyr::select(datta, starts_with("I_")), function(x) sum(is.na(x))))
+which(sapply(dplyr::select(datta, starts_with("I_")), function(x) any(is.na(x))) == TRUE)
 # - no need
 
 # 2.iv) QUANTITATIVE
-any(sapply(dplyr::select(datta, starts_with("Q_")), function(x) sum(is.na(x))))
-datta <- impute(datta, varType = 'Q_', values = list(0, "mean"), keepOriginal = TRUE)
+which(sapply(dplyr::select(datta, starts_with("Q_")), function(x) any(is.na(x))) == TRUE)
+datta <- impute(datta, varType = 'Q_', values = list(0, "mean"), keepOriginal = FALSE)
 
 # 2.v) CATEGORICAL NOMINAL
-any(sapply(dplyr::select(datta, starts_with("CN_")), function(x) sum(is.na(x))))
+which(sapply(dplyr::select(datta, starts_with("CN_")), function(x) any(is.na(x))) == TRUE)
   # - no need
 
 # 2.v) CATEGORICAL ORDINAL
-any(sapply(dplyr::select(datta, starts_with("CQ_")), function(x) sum(is.na(x))))
-  # - no need
+which(sapply(dplyr::select(datta, starts_with("CO_")), function(x) any(is.na(x))) == TRUE)
+datta <- impute(datta, varType = 'CO_', values = list("missing"), keepOriginal = FALSE)
 
-## 3. OUTLIERS INDICATION
+# final check
+any(sapply(datta, function(x) is.na(x)))
+
+## 3.i OUTLIERS INDICATION
 datta <- indicateOutliers(datta)
+
+## 3.ii CENSORING
+# outlier information is already captured in dedicated outlier indicator columns
+# , now distribution are censored such that all observations fall between 3 STD
+# -> to improve binning algos later on
+outlier_indicators <- colnames(dplyr::select(datta, ends_with('_Out')))
+for(oi in outlier_indicators){
+  if(any(datta[,oi] == 1)){
+    original_var <- substr(oi,3,nchar(oi))
+    original_var <- substr(original_var,1,nchar(original_var)-4)
+    print(paste0('Generating trimmed version of: ',original_var,'...'))
+    
+    minn <- min(datta[datta[,oi] == 0,original_var], na.rm = T)
+    maxx <- max(datta[datta[,oi] == 0,original_var], na.rm = T)
+    
+    #create 'trimmed' variable
+    new_namee <- paste0(original_var, '_Trimmed')
+    datta[,new_namee] <- datta[,original_var]
+    if(any((datta[,oi]==1 & scale(datta[, original_var]) < 0))){
+      datta[(datta[,oi]==1 & scale(datta[, original_var]) < 0) ,new_namee]  <- minn  
+    }
+    if(any((datta[,oi]==1 & scale(datta[, original_var]) >= 0))){
+      datta[(datta[,oi]==1 & scale(datta[, original_var]) >= 0) ,new_namee] <- maxx
+    }
+    
+    # drop original variable with outliers
+    datta[,original_var] <- NULL
+  }
+}
+## Checking for quantitative variables with only few levels
+# Some variables may seem quantitative, but in fact, only a couple of distinct values exist -> cast to Categorical (otherwise problems in binning)
+qnames <- colnames(dplyr::select(datta, starts_with("Q_")))
+summary <- data.frame()
+for(varName in qnames) summary <- rbind(summary, data.frame(varName = varName, uniqueValues = length(unique(datta[,varName]))))
+summary <- dplyr::arrange(summary, uniqueValues)
+View(dplyr::filter(summary, uniqueValues <= maxLevels))
+# turn the low-unique-values one into categorical nominal
+# TODO: RADO:This should be done better, some should actually be ordinal...
+toBeCat <- dplyr::filter(summary, uniqueValues <= maxLevels)[,1]
+colnames(datta)[colnames(datta) %in% toBeCat] <- gsub('Q_','CN_',toBeCat)
 
 ## 4. RARE-LEVEL INDICATION
 # TODO: RADO

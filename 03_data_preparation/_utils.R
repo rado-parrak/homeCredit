@@ -82,20 +82,26 @@ impute  <- function(inputData, varType, values, keepOriginal = TRUE){
   for(var in toBeImputed){
     print(paste0('Imputing variable: ', var))
     counter <- 0
+    inputData[, paste0('I_NA_',var)] <- ifelse(is.na(inputData[ ,var]), 1, 0)
     for(value in values){
       counter <- counter + 1
       if(value[[1]] == "mean"){
         varName <- paste0(var,"_IMP_v",counter)
         inputData[ ,varName] <- ifelse(is.na(inputData[ ,var]),mean(inputData[ ,var], na.rm=TRUE),inputData[ ,var])         
       } else if(value[[1]] == "missing"){
-        
+        varName <- paste0(var,"_IMP_v",counter)
+        if(is.numeric(inputData[ ,var])){
+          inputData[ ,varName] <- ifelse(is.na(inputData[ ,var]),-999,inputData[ ,var])
+        } else{
+          inputData[ ,varName] <- ifelse(is.na(inputData[ ,var]),'missing',inputData[ ,var])
+        }
       } else{
         varName <- paste0(var,"_IMP_v",counter)
         inputData[ ,varName] <- ifelse(is.na(inputData[ ,var]),value[[1]],inputData[ ,var]) 
       }
     }
     if(!keepOriginal){
-      inputData <- inputData[,-varName]
+      inputData[,var] <- NULL
     }
   }
   
@@ -139,14 +145,36 @@ castVariables <- function(inputData){
 }
 
 # doSmBinning wraper for paralelization
-doSmBinning <- function(varName, inputData,pVal,IVtresh){
-  print(paste0("Binning, calculating WOE and IV for: ", varName))
+doSmBinning <- function(varName, inputData,pVal,IVtresh, filePath){
+  set.seed(21)
+  cat(paste0(Sys.time()," | SM Binning, calculating WOE and IV for: ", varName, '\n'), file = filePath, append = TRUE)
   inputData[,varName] <- as.numeric(inputData[,varName])
-  res <- smbinning(df=inputData, y="T_TARGET",x=varName,p=pVal)
-  if(res != "No significant splits"){
-    if(res$iv >= IVtresh){
-      return(res)
-    }    
+  
+  res <- tryCatch(smbinning(df=inputData, y="T_TARGET",x=varName,p=pVal), error=function(e) NULL)
+
+  if(!is.null(res)){
+    if(res != "No significant splits" & !is.null(res)){
+      if(res$iv >= IVtresh){
+        return(res)
+      }    
+    }  
   }
+   
 }
 
+# doWoeBinning wraper for paralelization
+doWoeBinning <- function(varName, inputData, pVal, IVtresh, minPercClass, filePath){
+  set.seed(21)
+  cat(paste0(Sys.time()," | WOE Binning, calculating WOE and IV for: ", varName, '\n'), file = filePath, append = TRUE)
+  inputData[,varName] <- as.numeric(inputData[,varName])
+  
+  res <- tryCatch(woe.binning(inputData, 'T_TARGET', varName, min.perc.total = pVal, min.perc.class = minPercClass, event.class = 1)
+                  , error=function(e) NULL)
+  
+  if(!is.null(res)){
+    if(res[[2]]$iv.total.final[1] >= IVtresh){
+      return(res)
+    } 
+  }
+  
+}

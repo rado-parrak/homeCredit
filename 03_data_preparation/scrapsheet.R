@@ -1,10 +1,8 @@
-# Load German credit data and create subset
-data(germancredit)
 df <- sdata
 
 # Bin all variables of the data frame (apart from the target variable)
 # with default parameter settings
-binning <- woe.binning(df, 'T_TARGET', 'Q_EXT_SOURCE_3', min.perc.total = 0.01)
+binning <- woe.binning(df, 'T_TARGET', 'Q_EXT_SOURCE_3_IMP_v1', min.perc.total = 0.05, min.perc.class = 0.01, event.class = 1)
 
 # Plot the binned variables
 woe.binning.plot(binning)
