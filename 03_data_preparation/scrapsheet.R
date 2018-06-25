@@ -54,7 +54,14 @@ for(res in results_m){
 
 
 
+rm(list = ls())
+train <- read.csv(file ='./sanitized_data/s_application_for_regBased_train.csv', header = T)
+train <- dplyr::select(train, -one_of('T_TARGET'))
+test <- read.csv(file ='./sanitized_data/s_application_for_regBased_test.csv', header = T)
 
+setequal(colnames(train), colnames(test))
+setdiff(colnames(train), colnames(test))
+setdiff(colnames(test), colnames(train))
 
  
 

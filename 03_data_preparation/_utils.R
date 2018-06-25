@@ -77,7 +77,7 @@ extendColumnNamesByTypes <- function(inputData, ids, target, dates, indicators,q
 impute  <- function(inputData, varType, values, keepOriginal = TRUE){
   
   # find those where it makes sense:
-  toBeImputed <- names(sapply(dplyr::select(datta, starts_with(varType)), function(x) sum(is.na(x))))
+  toBeImputed <- names(sapply(dplyr::select(inputData, starts_with(varType)), function(x) sum(is.na(x))))
   
   for(var in toBeImputed){
     print(paste0('Imputing variable: ', var))

@@ -106,7 +106,7 @@ if(file.exists('../model_log.csv')){
 }
 write.table(modelSummary, file = '../model_log.csv', sep = ',', row.names = FALSE)
 
-
-
+# ================ Save the benchmark model ================ 
+save(benchmarkModel, file='benchmarkModel_glm_v0.RData')
 
 
