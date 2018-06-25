@@ -20,6 +20,8 @@ rm(list = ls())
 
 #libs & proprietary functions:
 library(caret)
+library(e1071)
+library(pROC)
 source('../../03_data_preparation/_utils.R')
 
 # settings
@@ -27,6 +29,9 @@ corCutOff <- 0.6
 
 # load data
 tdata <- read.csv("../../03_data_preparation/predictor_base/predictor_base_train.csv")
+
+#drop ID
+tdata <- dplyr::select(tdata, -one_of('ID_SK_ID_CURR'))
 
 # cast variables to correct variables types (see './00_organisation/README_variable_types.txt')
 tdata <- castVariables(tdata)
@@ -50,6 +55,15 @@ corr <- cor(cor_input)
 toKeep <- colnames(cor_input)[caret::findCorrelation(corr, cutoff = corCutOff, verbose = TRUE, exact = ncol(corr) < 100)]
 
 tdata <- tdata[,c('T_TARGET',toKeep)]
+tdata$T_TARGET <- as.factor(tdata$T_TARGET)
+levels(tdata$T_TARGET) <- make.names(levels(factor(tdata$T_TARGET)))
+
+# drop the the same columns with different imputation methods:
+tdata <- dplyr::select(tdata, -one_of(c('B_Q_AMT_CREDIT_IMP_v2_Trimmed_sm'
+                                          , 'B_Q_DAYS_BIRTH_IMP_v2_sm'
+                                          , 'B_Q_EXT_SOURCE_3_IMP_v2_sm'
+                                          , 'B_Q_DAYS_EMPLOYED_IMP_v2_Trimmed_sm'
+                                          , 'Q_AMT_CREDIT_IMP_v2_Trimmed')))
 
 set.seed(21)
 trainIndex <- caret::createDataPartition(tdata$T_TARGET, p = .7, list = FALSE, times = 1)
@@ -60,12 +74,39 @@ test  <- tdata[-trainIndex,]
 fitControl <- trainControl(method = "repeatedcv"
                            , number = 10
                            , repeats = 1
-                           , classProbs = TRUE)
+                           , classProbs = TRUE
+                           , summaryFunction = twoClassSummary)
 
-benchmarkModel <- train(T_TARGET ~ ., data = train, 
+benchmarkModel <- train(T_TARGET ~ ., data = train,
                  method = "glm",
                  metric = 'ROC',
                  trControl = fitControl,
-                 verbose = FALSE)
+                 family = binomial())
+
+summary(benchmarkModel)
+benchmarkModel$results
+
+pred <- predict(benchmarkModel, test, type = 'prob')
+head(pred)
+
+roc <- pROC::roc(predictor=pred$X1, response=test$T_TARGET)
+
+
+# ================ Save to the MODEL LOG ================ 
+modelSummary <- data.frame(DATE = paste0(Sys.Date(), " | ", Sys.time()) 
+                           , MODEL_TYPE = 'benchmark - GLM'
+                           , MODEL_VERSION = 0
+                           , MODELLER = 'Rado'
+                           , TRAIN_AUC = benchmarkModel$results$ROC
+                           , TEST_AUX = as.numeric(roc$auc))
+
+if(file.exists('../model_log.csv')){
+  modelSummaryOld <- read.table('../model_log.csv', sep=',', header = T)
+  modelSummary <- rbind(modelSummaryOld,modelSummary)
+}
+write.table(modelSummary, file = '../model_log.csv', sep = ',', row.names = FALSE)
+
+
+
 
 

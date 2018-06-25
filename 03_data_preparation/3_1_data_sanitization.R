@@ -28,6 +28,7 @@ rm(list = ls())
 
 source("_utils.R")
 library(dplyr)
+library(stringr)
 
 # ----------------------------------------------------------------------------------------
 #                                  GLOBAL SETTINGS
@@ -99,6 +100,15 @@ for(varName in daysCols){
   datta[which(datta[,varName] > 365*100),varName] <- NA
   datta[which(datta[,varName] < -365*100),varName] <- NA
 }
+
+## Technical:
+# Get rid of commas in the level-names. SM binning cannot work when commas in the names
+for(var in colnames(dplyr::select(datta, starts_with('CN_'), starts_with('CO_')))){
+  print(paste0(Sys.time(),"Sanitizing level-names for: ", var, "..."))
+  datta[,var] <- stringr::str_replace_all(as.character(datta[,var])," ","_")
+  datta[,var] <- stringr::str_replace_all(as.character(datta[,var]),",","")
+}
+
 ## 2. MISSING VALUES IMPUTATION
 # 2.i) target
 any(is.na(datta$T_TARGET)) 

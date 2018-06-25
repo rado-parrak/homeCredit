@@ -125,18 +125,17 @@ castVariables <- function(inputData){
   # intervals / quantitative:
   qnames        <- colnames(dplyr::select(inputData, dplyr::starts_with('Q_')))
   qnames        <- c(qnames, colnames(dplyr::select(inputData, dplyr::starts_with('ID_'))))
+  qnames        <- c(qnames, colnames(dplyr::select(inputData, dplyr::starts_with('T_'))))
   outputData_q  <- as.data.frame(sapply(inputData[,qnames], as.numeric))
   
   # factors: Target, Indicators, Categorical Nominal 
-  fnames        <- colnames(dplyr::select(inputData, dplyr::starts_with('T_')))
-  fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('I_'))))
+  fnames        <- colnames(dplyr::select(inputData, dplyr::starts_with('I_')))
   fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('CN_'))))
-  fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('B_'))))
   outputData_f  <- as.data.frame(sapply(inputData[,fnames], as.factor))
   
   # ordinals:
   # TODO: See how this can be done such that we're sure that the order is correct
-  onames        <- colnames(dplyr::select(inputData, dplyr::starts_with('CO_')))
+  onames        <- colnames(dplyr::select(inputData, dplyr::starts_with('CO_'), dplyr::starts_with('B_')))
   outputData_o  <- as.data.frame(sapply(inputData[,onames], as.ordered))
   
   allnames <- c(qnames,fnames,onames)
@@ -145,12 +144,19 @@ castVariables <- function(inputData){
 }
 
 # doSmBinning wraper for paralelization
-doSmBinning <- function(varName, inputData,pVal,IVtresh, filePath){
+doSmBinning <- function(type,varName, inputData,pVal,IVtresh, filePath){
   set.seed(21)
   cat(paste0(Sys.time()," | SM Binning, calculating WOE and IV for: ", varName, '\n'), file = filePath, append = TRUE)
-  inputData[,varName] <- as.numeric(inputData[,varName])
   
-  res <- tryCatch(smbinning(df=inputData, y="T_TARGET",x=varName,p=pVal), error=function(e) NULL)
+  res <- tryCatch(
+    if(type == 'q'){
+      inputData[,varName] <- as.numeric(inputData[,varName])
+      smbinning(df=inputData, y="T_TARGET",x=varName,p=pVal)
+    } else if(type == 'c'){
+      inputData[,varName] <- as.factor(inputData[,varName])
+      smbinning.factor(df=inputData, y="T_TARGET",x=varName,maxcat = 70)
+    }
+    , error=function(e) NULL)
 
   if(!is.null(res)){
     if(res != "No significant splits" & !is.null(res)){
