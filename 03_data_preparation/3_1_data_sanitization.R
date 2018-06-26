@@ -195,6 +195,11 @@ sanitizeApplicationData <- function(inputFile, outputFile, maxLevels = 25, scope
 # ----------------------------------------------------------------------------------------
 maxLevels <- 25 # maximum number of level that a categorical variable can have.
 
+
+# ----------------------------------------------------------------------------------------
+#                                  SCRIPT EXECUTION
+# ----------------------------------------------------------------------------------------
+
 sanitizeApplicationData(inputFile = "..//01_raw_data/application_train.csv"
                         , outputFile = "./sanitized_data/s_application_for_regBased_train.csv"
                         , maxLevels = maxLevels

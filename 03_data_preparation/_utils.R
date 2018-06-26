@@ -159,7 +159,7 @@ doSmBinning <- function(type,varName, inputData,pVal,IVtresh, filePath){
     , error=function(e) NULL)
 
   if(!is.null(res)){
-    if(res != "No significant splits" & !is.null(res)){
+    if(res != "No significant splits"){
       if(res$iv >= IVtresh){
         return(res)
       }    
