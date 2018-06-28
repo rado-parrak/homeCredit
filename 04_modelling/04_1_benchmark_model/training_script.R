@@ -28,7 +28,7 @@ source('../../03_data_preparation/_utils.R')
 corCutOff <- 0.6
 
 # load data
-tdata <- read.csv("../../03_data_preparation/predictor_base/predictor_base_train.csv")
+tdata <- read.csv("../../03_data_preparation/predictor_base/predictor_base_regBased_train.csv")
 
 #drop ID
 tdata <- dplyr::select(tdata, -one_of('ID_SK_ID_CURR'))
@@ -58,13 +58,6 @@ tdata <- tdata[,c('T_TARGET',toKeep)]
 tdata$T_TARGET <- as.factor(tdata$T_TARGET)
 levels(tdata$T_TARGET) <- make.names(levels(factor(tdata$T_TARGET)))
 
-# drop the the same columns with different imputation methods:
-tdata <- dplyr::select(tdata, -one_of(c('B_Q_AMT_CREDIT_IMP_v2_Trimmed_sm'
-                                          , 'B_Q_DAYS_BIRTH_IMP_v2_sm'
-                                          , 'B_Q_EXT_SOURCE_3_IMP_v2_sm'
-                                          , 'B_Q_DAYS_EMPLOYED_IMP_v2_Trimmed_sm'
-                                          , 'Q_AMT_CREDIT_IMP_v2_Trimmed')))
-
 set.seed(21)
 trainIndex <- caret::createDataPartition(tdata$T_TARGET, p = .7, list = FALSE, times = 1)
 train <- tdata[trainIndex,]
@@ -90,7 +83,6 @@ pred <- predict(benchmarkModel, test, type = 'prob')
 head(pred)
 
 roc <- pROC::roc(predictor=pred$X1, response=test$T_TARGET)
-
 
 # ================ Save to the MODEL LOG ================ 
 modelSummary <- data.frame(DATE = paste0(Sys.Date(), " | ", Sys.time()) 
