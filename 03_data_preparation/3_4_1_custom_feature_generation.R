@@ -235,6 +235,7 @@ settings <- data.frame(pVal = 0.05
 # ----------------------------------------------------------------------------------------
 #                                  SCRIPT EXECUTION
 # ----------------------------------------------------------------------------------------
+# 1) Regression-based models:
 preparePredictorBase(inputFile = './sanitized_data/s_application_for_regBased_train.csv'
                      , outputFile = './predictor_base/predictor_base_regBased_train.csv'
                      , scope = 'train'
@@ -248,3 +249,15 @@ preparePredictorBase(inputFile = './sanitized_data/s_application_for_regBased_te
                      , settings)
 
 
+# 1) Tree-based models:
+preparePredictorBase(inputFile = './sanitized_data/s_application_for_regBased_train.csv'
+                                  , outputFile = './predictor_base/predictor_base_treeBased_train.csv'
+                                  , scope = 'train'
+                                  , modelType = 'treeBased'
+                                  , settings)
+
+preparePredictorBase(inputFile = './sanitized_data/s_application_for_regBased_test.csv'
+                     , outputFile = './predictor_base/predictor_base_treeBased_test.csv'
+                     , scope = 'test'
+                     , modelType = 'treeBased'
+                     , settings)

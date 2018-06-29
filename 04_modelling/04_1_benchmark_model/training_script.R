@@ -80,7 +80,7 @@ summary(benchmarkModel)
 benchmarkModel$results
 
 pred <- predict(benchmarkModel, test, type = 'prob')
-head(pred)
+hist(pred$X1)
 
 roc <- pROC::roc(predictor=pred$X1, response=test$T_TARGET)
 
