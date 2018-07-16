@@ -6,6 +6,7 @@ scope     <- 'train'
 
 source("_utils.R")
 require('dplyr')
+require('rlang')
 
 ## _______________________ THE FUNCTION __________________________________________________________________________
 
@@ -71,6 +72,55 @@ for(var in colnames(dplyr::select(datta, starts_with('CN_'), starts_with('CO_'))
   datta[,var] <- stringr::str_replace_all(as.character(datta[,var])," ","_")
   datta[,var] <- stringr::str_replace_all(as.character(datta[,var]),",","")
 }
+
+## 2. AGGREGATE ON SK_ID_CURR LEVEL
+datta   <- castVariables(datta)
+datta_agg <- data.frame(ID_SK_ID_CURR = unique(datta[,c('ID_SK_ID_CURR')]))
+
+doCountsCategorical <- function(inputData, var){
+  inputData <- inputData %>% dplyr::select(ID_SK_ID_CURR, ID_SK_ID_PREV, !!rlang::sym(var))
+  inputData[,var] <- as.factor(paste0('C_PREV_APP_',as.character(inputData[,var])))
+  inputData <- inputData %>% 
+    dplyr::group_by(ID_SK_ID_CURR, !!rlang::sym(var)) %>% 
+    dplyr::summarize(CNT = length(ID_SK_ID_PREV)) %>% 
+    reshape2::dcast(paste0('ID_SK_ID_CURR ~',eval(var)), fill = 0, value.var = "CNT")
+  
+  return(inputData)
+}
+
+for(c in colnames(dplyr::select(datta, starts_with('CN_')))){
+  print(paste0(Sys.time(),'| Counting and spreading categorical : ', c))
+  datta_agg <- dplyr::left_join(x = datta_agg
+                                , y = doCountsCategorical(datta, c)
+                                , by = c('ID_SK_ID_CURR'))  
+}
+
+doQuantitative <- function(inputData, var){
+  inputData[,var] <- as.numeric(inputData[,var])
+  inputData <- inputData %>% 
+    dplyr::select(ID_SK_ID_CURR, !!rlang::sym(var)) %>%
+    dplyr::group_by(ID_SK_ID_CURR) %>%
+    dplyr::summarize(PREV_APP_MAX = max(!!rlang::sym(var), na.rm = TRUE)
+                     , PREV_APP_MIN = min(!!rlang::sym(var), na.rm = TRUE)
+                     , PREV_APP_MEAN = mean(!!rlang::sym(var), na.rm = TRUE)
+                     , PREV_APP_MEDIAN = median(!!rlang::sym(var), na.rm = TRUE))
+  
+  colnames(inputData)[colnames(inputData) == 'PREV_APP_MAX'] <- paste0('Q_PREV_APP_MAX_', var)
+  colnames(inputData)[colnames(inputData) == 'PREV_APP_MIN'] <- paste0('Q_PREV_APP_MIN_', var)
+  colnames(inputData)[colnames(inputData) == 'PREV_APP_MEAN'] <- paste0('Q_PREV_APP_MEAN_', var)
+  colnames(inputData)[colnames(inputData) == 'PREV_APP_MEDIAN'] <- paste0('Q_PREV_APP_MEDIAN_', var)
+  
+  return(inputData)
+}
+
+for(c in colnames(dplyr::select(datta, starts_with('Q_')))){
+  print(paste0(Sys.time(),'| Aggregating quantitative : ', c))
+  datta_agg <- dplyr::left_join(x = datta_agg
+                                , y = doQuantitative(datta, c)
+                                , by = c('ID_SK_ID_CURR'))  
+}
+
+datta_agg   <- castVariables(datta_agg)
 
 ## 2. MISSING VALUES IMPUTATION
 # 2.ii) IDs
@@ -147,28 +197,6 @@ if(scope == 'train'){
 
 ## 4. RARE-LEVEL INDICATION
 # TODO: RADO
-
-## 5. AGGREGATE ON SK_ID_CURR LEVEL
-datta   <- castVariables(datta)
-datta_agg <- data.frame(ID_SK_ID_CURR = unique(datta[,c('ID_SK_ID_CURR')]))
-
-doCountsCategorical <- function(inputData, var){
-  inputData <- inputData %>% dplyr::select_('ID_SK_ID_CURR', 'ID_SK_ID_PREV', eval(var))
-  inputData[,var] <- as.factor(paste0('PREV_APP_',as.character(inputData[,var])))
-  inputData <- inputData %>% 
-    dplyr::group_by_('ID_SK_ID_CURR', eval(var)) %>% 
-    dplyr::summarize(CNT = length(ID_SK_ID_PREV)) %>% 
-    reshape2::dcast(paste0('ID_SK_ID_CURR ~',eval(var)), fill = 0, value.var = "CNT")
-  
-  return(inputData)
-}
-
-for(c in colnames(datta)[grepl('CN_',colnames(datta))]){
-  print(paste0(Sys.time(),'| Counting and spreading categorical : ', c))
-  datta_agg <- dplyr::left_join(x = datta_agg
-                                , y = doCountsCategorical(datta, c)
-                                , by = c('ID_SK_ID_CURR'))  
-}
 
 
 ## 6. SAVE
