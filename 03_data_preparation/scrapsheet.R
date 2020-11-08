@@ -1,208 +1,227 @@
 rm(list = ls())
+library(plyr)
+library(dplyr)
+library(smbinning)
+library(woeBinning)
+library(ggplot2)
+library(doParallel)
+library(InformationValue)
+source('_utils.R')
 
-maxLevels <- 25
-inputFile <- "..//01_raw_data/previous_application.csv"
-scope     <- 'train'
+settings <- data.frame(pVal = 0.05
+                       , IVtresh = 0.05
+                       , minPerClass = 0.01)
 
-source("_utils.R")
-require('dplyr')
-require('rlang')
+inputFile = './sanitized_data/s_prev_application_for_regBased.csv'
+inputFileApp = './sanitized_data/s_application_for_regBased_train.csv'
+outputFile = './predictor_base/predictor_base_treeBased_test.csv'
+scope = 'train'
+modelType = 'regressionBased'
 
-## _______________________ THE FUNCTION __________________________________________________________________________
+# :::::::::::::::::::::::::::::::::::::::::: FUNCTION ::::::::::::::::::::::::::::::::::::::::::::::::::::
+sdata <- read.csv(inputFile, header = T)
+sdata <- castVariables(sdata)
 
-  
-datta <- read.csv(inputFile, header = T)
-
-## 1. add varible name pre-fixed according to variable types (see ../00_organisation/README_variable_types.txt)
-ids           <- c('SK_ID_CURR', 'SK_ID_PREV')
-dates         <- NULL
-target        <- NULL
-indicators    <- unique(c(colnames(datta)[grepl("FLAG", colnames(datta))]
-                          , colnames(datta)[grepl("NFLAG", colnames(datta))]
-))
-
-categoricalSuggested  <- suggestCategorical(datta, maxLevels)
-categoricalSuggested  <- categoricalSuggested[!(categoricalSuggested %in% c(target, indicators))] 
-print(categoricalSuggested)
-
-categoricalNominal <- c('NAME_CONTRACT_TYPE'
-                        , 'NAME_CASH_LOAN_PURPOSE'
-                        , 'NAME_CONTRACT_STATUS'
-                        , 'NAME_PAYMENT_TYPE'
-                        , 'CODE_REJECT_REASON'
-                        , 'NAME_TYPE_SUITE'
-                        , 'NAME_CLIENT_TYPE'
-                        , 'NAME_GOODS_CATEGORY'
-                        , 'NAME_PORTFOLIO'
-                        , 'NAME_PRODUCT_TYPE'
-                        , 'CHANNEL_TYPE'
-                        , 'NAME_SELLER_INDUSTRY'
-                        , 'NAME_YIELD_GROUP'
-                        , 'PRODUCT_COMBINATION'
-                        )
-
-categoricalOrdinal <- c('WEEKDAY_APPR_PROCESS_START'
-                        ,'HOUR_APPR_PROCESS_START')
-
-quantitative  <- colnames(datta)[!(colnames(datta) %in% c(ids, target, indicators, dates, categoricalNominal, categoricalOrdinal))]
-
-check <- c(ids, target,dates,indicators,quantitative,categoricalNominal,categoricalOrdinal)
-check <- as.data.frame(table(check)) %>% dplyr::arrange(desc(Freq))
-
-datta <- extendColumnNamesByTypes(datta
-                                  , ids = ids
-                                  , target = target
-                                  , dates = dates
-                                  , indicators = indicators
-                                  , quantitative = quantitative
-                                  , categoricalNominal = categoricalNominal
-                                  , categoricalOrdinal = categoricalOrdinal)
-## Economic-sense-based:
-# i.) Day cannot be < 0 and larger than 100 years => 36500 days.
-daysCols <- colnames(dplyr::select(datta, contains('DAYS')))
-for(varName in daysCols){
-  datta[which(datta[,varName] > 365*100),varName] <- NA
-  datta[which(datta[,varName] < -365*100),varName] <- NA
+# --------------------------------------------------------------------------------------------------
+#                                 --- Splitting  ---
+# --------------------------------------------------------------------------------------------------
+if(scope == 'train'){
+  sdata <- read.csv(inputFileApp, header = T) %>% 
+    dplyr::select(ID_SK_ID_CURR, T_TARGET) %>%
+    dplyr::left_join(y = sdata, by = c('ID_SK_ID_CURR'))
+} else{
+  error('Not done yet!')
 }
-
-## Technical:
-# Get rid of commas in the level-names. SM binning cannot work when commas in the names
-for(var in colnames(dplyr::select(datta, starts_with('CN_'), starts_with('CO_')))){
-  print(paste0(Sys.time()," Sanitizing level-names for: ", var, "..."))
-  datta[,var] <- stringr::str_replace_all(as.character(datta[,var])," ","_")
-  datta[,var] <- stringr::str_replace_all(as.character(datta[,var]),",","")
-}
-
-## 2. AGGREGATE ON SK_ID_CURR LEVEL
-datta   <- castVariables(datta)
-datta_agg <- data.frame(ID_SK_ID_CURR = unique(datta[,c('ID_SK_ID_CURR')]))
-
-doCountsCategorical <- function(inputData, var){
-  inputData <- inputData %>% dplyr::select(ID_SK_ID_CURR, ID_SK_ID_PREV, !!rlang::sym(var))
-  inputData[,var] <- as.factor(paste0('C_PREV_APP_',as.character(inputData[,var])))
-  inputData <- inputData %>% 
-    dplyr::group_by(ID_SK_ID_CURR, !!rlang::sym(var)) %>% 
-    dplyr::summarize(CNT = length(ID_SK_ID_PREV)) %>% 
-    reshape2::dcast(paste0('ID_SK_ID_CURR ~',eval(var)), fill = 0, value.var = "CNT")
-  
-  return(inputData)
-}
-
-for(c in colnames(dplyr::select(datta, starts_with('CN_')))){
-  print(paste0(Sys.time(),'| Counting and spreading categorical : ', c))
-  datta_agg <- dplyr::left_join(x = datta_agg
-                                , y = doCountsCategorical(datta, c)
-                                , by = c('ID_SK_ID_CURR'))  
-}
-
-doQuantitative <- function(inputData, var){
-  inputData[,var] <- as.numeric(inputData[,var])
-  inputData <- inputData %>% 
-    dplyr::select(ID_SK_ID_CURR, !!rlang::sym(var)) %>%
-    dplyr::group_by(ID_SK_ID_CURR) %>%
-    dplyr::summarize(PREV_APP_MAX = max(!!rlang::sym(var), na.rm = TRUE)
-                     , PREV_APP_MIN = min(!!rlang::sym(var), na.rm = TRUE)
-                     , PREV_APP_MEAN = mean(!!rlang::sym(var), na.rm = TRUE)
-                     , PREV_APP_MEDIAN = median(!!rlang::sym(var), na.rm = TRUE))
-  
-  colnames(inputData)[colnames(inputData) == 'PREV_APP_MAX'] <- paste0('Q_PREV_APP_MAX_', var)
-  colnames(inputData)[colnames(inputData) == 'PREV_APP_MIN'] <- paste0('Q_PREV_APP_MIN_', var)
-  colnames(inputData)[colnames(inputData) == 'PREV_APP_MEAN'] <- paste0('Q_PREV_APP_MEAN_', var)
-  colnames(inputData)[colnames(inputData) == 'PREV_APP_MEDIAN'] <- paste0('Q_PREV_APP_MEDIAN_', var)
-  
-  return(inputData)
-}
-
-for(c in colnames(dplyr::select(datta, starts_with('Q_')))){
-  print(paste0(Sys.time(),'| Aggregating quantitative : ', c))
-  datta_agg <- dplyr::left_join(x = datta_agg
-                                , y = doQuantitative(datta, c)
-                                , by = c('ID_SK_ID_CURR'))  
-}
-
-datta_agg   <- castVariables(datta_agg)
-
-## 2. MISSING VALUES IMPUTATION
-# 2.ii) IDs
-if(length(which(sapply(dplyr::select(datta, starts_with("ID_")), function(x) any(is.na(x))) == TRUE)) > 0)
-  datta <- impute(datta, varType = 'T_', values = list(0), keepOriginal = FALSE)  
-
-# 2.iii) INDICATORs
-if(length(which(sapply(dplyr::select(datta, starts_with("I_")), function(x) any(is.na(x))) == TRUE)) > 0)
-  datta <- impute(datta, varType = 'I_', values = list(0), keepOriginal = FALSE)
-
-# 2.iv) QUANTITATIVE
-if(length(which(sapply(dplyr::select(datta, starts_with("Q_")), function(x) any(is.na(x))) == TRUE)) > 0)
-  datta <- impute(datta, varType = 'Q_', values = list(0, "mean"), keepOriginal = FALSE)
-
-# 2.v) CATEGORICAL NOMINAL
-if(length(which(sapply(dplyr::select(datta, starts_with("CN_")), function(x) any(is.na(x))) == TRUE)) > 0)
-  datta <- impute(datta, varType = 'CN_', values = list("missing"), keepOriginal = FALSE)
-
-# 2.v) CATEGORICAL ORDINAL
-if(length(which(sapply(dplyr::select(datta, starts_with("CO_")), function(x) any(is.na(x))) == TRUE)) > 0)
-  datta <- impute(datta, varType = 'CO_', values = list("missing"), keepOriginal = FALSE)
-
-# final check
-any(sapply(datta, function(x) is.na(x)))
-
-## 3.i OUTLIERS INDICATION
-datta <- indicateOutliers(datta)
-
-## 3.ii CENSORING
-# outlier information is already captured in dedicated outlier indicator columns
-# , now distribution are censored such that all observations fall between 3 STD
-# -> to improve binning algos later on
-outlier_indicators <- colnames(dplyr::select(datta, ends_with('_Out')))
-for(oi in outlier_indicators){
-  if(any(datta[,oi] == 1)){
-    original_var <- substr(oi,3,nchar(oi))
-    original_var <- substr(original_var,1,nchar(original_var)-4)
-    print(paste0('Generating trimmed version of: ',original_var,'...'))
+# --------------------------------------------------------------------------------------------------
+#                                 --- SELECTING IMPUTATION versions ---
+# --------------------------------------------------------------------------------------------------
+if(scope == 'train'){
+  if(modelType %in% c('regressionBased', 'treeBased')){
+    imps <- colnames(dplyr::select(sdata, contains('_IMP')))
+    non_imps <- colnames(sdata)[!(colnames(sdata) %in% imps)] 
     
-    minn <- min(datta[datta[,oi] == 0,original_var], na.rm = T)
-    maxx <- max(datta[datta[,oi] == 0,original_var], na.rm = T)
+    toKeep <- non_imps
     
-    #create 'trimmed' variable
-    new_namee <- paste0(original_var, '_Trimmed')
-    datta[,new_namee] <- datta[,original_var]
-    if(any((datta[,oi]==1 & scale(datta[, original_var]) < 0))){
-      datta[(datta[,oi]==1 & scale(datta[, original_var]) < 0) ,new_namee]  <- minn  
+    # get unique 'core' names:
+    coreNames <- unique(sapply(imps, function(x) gsub('_IMP.*',"",x)))
+    for(coreName in coreNames){
+      print(paste0('Selecting imputation version for: ', coreName))
+      versions <- imps[sapply(imps, function(x) startsWith(x,coreName))]
+      versionComp <- data.frame()
+      for(version in versions){
+        versionComp <- rbind(versionComp, data.frame(version, IV = InformationValue::IV(X = sdata[,version], Y = sdata[,'T_TARGET'])))
+      }
+      versionComp <- dplyr::arrange(versionComp, desc(IV))
+      print(as.character(versionComp$version)[1])
+      toKeep <- c(toKeep, as.character(versionComp$version)[1])
+      rm(versions, versionComp)
     }
-    if(any((datta[,oi]==1 & scale(datta[, original_var]) >= 0))){
-      datta[(datta[,oi]==1 & scale(datta[, original_var]) >= 0) ,new_namee] <- maxx
+  }
+  save(toKeep, file =paste0('toKeepFromImputation_prev_',modelType,'.RData'))
+} else if(scope == 'scoring'){
+  load(paste0('toKeepFromImputation_',modelType,'.RData'))
+  toKeep <- toKeep[-which(toKeep == 'T_TARGET')]
+}
+sdata <- sdata[,unique(toKeep)]
+# --------------------------------------------------------------------------------------------------
+#                                     --- BINNING ---
+# --------------------------------------------------------------------------------------------------
+if(modelType == 'regressionBased'){
+  if(scope == 'train'){
+    # ----- (a) Quantitative variables -----
+    sdata_q   <- dplyr::select(sdata, starts_with("Q_")) %>% dplyr::mutate(T_TARGET = sdata$T_TARGET)
+    qnames    <- colnames(sdata_q)[colnames(sdata_q) != "T_TARGET"]
+    results_q <- list()
+    cl        <- makeCluster(detectCores() - 1)
+    registerDoParallel(cl)
+    
+    nParts <- 100
+    log_con1 <- file("SmBinningLog.log", open = "a")
+    
+    for(j in 1:nParts){ #this outer loop is there due to heap insuficiency
+      print(paste0('Start: ', Sys.time()))
+      minn <- (j-1)*ceiling(ncol(sdata_q)/nParts) + 1
+      maxx <- min((j)*ceiling(ncol(sdata_q)/nParts),length(qnames))
+      print(paste0('=== Chunk >> ', minn, ':', maxx, ' from ', length(qnames),'. ==='))
+      
+      aux_smBinning <- foreach(i = minn:maxx, .packages = c('smbinning')) %dopar% {
+        source('_utils.R', local = TRUE)
+        doSmBinning('q',qnames[[i]], sdata_q, settings$pVal, settings$IVtresh, './SmBinningLog.log')
+      }
+      
+      if(j == 1){
+        results_q   <- aux_smBinning
+      } else{
+        results_q   <- c(results_q, aux_smBinning)
+      }
+      results_q <- plyr::compact(results_q)
+      
+      rm(aux_smBinning)
+      print(paste0('End: ', Sys.time()))
+    }
+    stopCluster(cl)
+    close(log_con1)
+    
+    # save the interesting vars from 'smBinning' to IV container
+    ivContainer       <- list()
+    for(res in results_q){
+      ivContainer[[colnames(sdata_q)[res$col_id]]][['sm']]$IV             <- res$iv
+      ivContainer[[colnames(sdata_q)[res$col_id]]][['sm']]$cuts           <- res$cuts
+      ivContainer[[colnames(sdata_q)[res$col_id]]][['sm']]$binningMethod  <- 'smBinning'
     }
     
-    # drop original variable with outliers
-    datta[,original_var] <- NULL
+    # ----- (b) Categorical variables -----
+    sdata_c   <- dplyr::select(sdata, starts_with("CN_"), starts_with("CO_")) %>% dplyr::mutate(T_TARGET = sdata$T_TARGET)
+    cnames    <- colnames(sdata_c)[colnames(sdata_c) != "T_TARGET"]
+    results_c <- list()
+    cl        <- makeCluster(detectCores() - 1)
+    
+    registerDoParallel(cl)
+    nParts <- 6
+    log_con1 <- file("SmBinningLog.log", open = "a")
+    
+    for(j in 1:nParts){ #this outer loop is there due to heap insuficiency
+      print(paste0('Start: ', Sys.time()))
+      minn <- (j-1)*ceiling(ncol(sdata_c)/nParts) + 1
+      maxx <- min((j)*ceiling(ncol(sdata_c)/nParts),length(cnames))
+      print(paste0('=== Chunk >> ', minn, ':', maxx, ' from ', length(cnames),'. ==='))
+      
+      aux_smBinning <- foreach(i = minn:maxx, .packages = c('smbinning')) %dopar% {
+        source('_utils.R', local = TRUE)
+        doSmBinning('c',cnames[[i]], sdata_c, settings$pVal, settings$IVtresh, './SmBinningLog.log')
+      }
+      
+      if(j == 1){
+        results_c   <- aux_smBinning
+      } else{
+        results_c   <- c(results_c, aux_smBinning)
+      }
+      results_c <- plyr::compact(results_c)
+      
+      rm(aux_smBinning)
+      print(paste0('End: ', Sys.time()))
+    }
+    stopCluster(cl)
+    close(log_con1)
+    
+    # save the interesting vars from 'smBinning' to IV container
+    for(res in results_c){
+      ivContainer[[colnames(sdata_c)[res$col_id]]][['sm']]$IV             <- res$iv
+      ivContainer[[colnames(sdata_c)[res$col_id]]][['sm']]$cuts           <- res$cuts
+      ivContainer[[colnames(sdata_c)[res$col_id]]][['sm']]$binningMethod  <- 'smBinning'
+    }
+    
+    # ----- (C) Indicators variables -----
+    sdata_i <- dplyr::select(sdata, starts_with("I_")) %>%
+      dplyr::mutate(T_TARGET = sdata$T_TARGET)
+    
+    inames                <- colnames(sdata_i)[colnames(sdata_i) != "T_TARGET"]
+    for(var in inames){
+      print(paste0("Calculating Information Value for: ", var))
+      IV <- InformationValue::IV(X=sdata_i[,var], Y=sdata_i[,'T_TARGET'], valueOfGood = 1)
+      print(paste0('IV: ', as.character(IV[[1]])))
+      if(IV[[1]] > settings$IVtresh){
+        ivContainer[[var]][['noBinning']]$IV <- IV[[1]]
+        ivContainer[[var]][['noBinning']]$binningMethod <- 'no binning'
+      }
+    }
+    # ----- (D) PLOT -----
+    counter     <- 0
+    dataForPlot <- data.frame()
+    for(el in ivContainer){
+      counter <- counter +1
+      for(method in names(el)){
+        dataForPlot <- rbind(dataForPlot, data.frame(variable = paste0(names(ivContainer)[counter], ' | ', method)
+                                                     , IV = el[[method]]$IV))
+      }
+    }
+    
+    print(ggplot(data = dataForPlot, aes(x = reorder(variable, IV), y = IV)) +
+            geom_bar(stat = 'identity') +
+            coord_flip())
+    
+    toKeepFromBinning <- names(ivContainer)
+    save(results_c, results_q, file = './smbinning_results.RData')
+    save(toKeepFromBinning, file =paste0('toKeepFromBinning_',modelType,'.RData'))
+  } else if(scope == 'scoring'){
+    load(paste0('toKeepFromBinning_',modelType,'.RData'))
+    load('smbinning_results.RData')
+  }
+  
+}
+
+# --------------------------------------------------------------------------------------------------
+#                                     --- PRE-SELECTION ---
+# --------------------------------------------------------------------------------------------------
+if(modelType == 'regressionBased'){
+  # 1) take target and id
+  if(scope == 'train'){
+    output <- sdata[,c("T_TARGET", "ID_SK_ID_CURR")]  
+  } else if(scope == 'scoring'){
+    output <- data.frame(ID_SK_ID_CURR = sdata$ID_SK_ID_CURR)
+  }
+  
+  
+  # 2) take original variables from the top IV-selected
+  output <- cbind(output, sdata[,toKeepFromBinning])
+  
+  # 3.i) add SM binning of these
+  qnames_sm <- sapply(results_q, function(y) y$x)
+  for(namee in qnames_sm){
+    newName           <- paste0('B_',namee,'_sm')
+    output[,newName]  <- paste0("Bin_", findInterval(sdata[,namee], results_q[[which(qnames_sm == namee)]]$cuts))  
   }
 }
-if(scope == 'train'){
-  ## Checking for quantitative variables with only few levels
-  # Some variables may seem quantitative, but in fact, only a couple of distinct values exist -> cast to Categorical (otherwise problems in binning)
-  qnames <- colnames(dplyr::select(datta, starts_with("Q_")))
-  summary <- data.frame()
-  for(varName in qnames) summary <- rbind(summary, data.frame(varName = varName, uniqueValues = length(unique(datta[,varName]))))
-  summary <- dplyr::arrange(summary, uniqueValues)
-  View(dplyr::filter(summary, uniqueValues <= maxLevels))
-  # turn the low-unique-values one into categorical nominal
-  # TODO: RADO:This should be done better, some should actually be ordinal...
-  toBeCat <- dplyr::filter(summary, uniqueValues <= maxLevels)[,1]
-  colnames(datta)[colnames(datta) %in% toBeCat] <- gsub('Q_','CN_',toBeCat)
-  save(toBeCat, file = 'fromQuantitativeToCategorical_appPrev.RData')
-} else {
-  load("fromQuantitativeToCategorical_appPrev.RData")
-  colnames(datta)[colnames(datta) %in% toBeCat] <- gsub('Q_','CN_',toBeCat)
+if(modelType == 'treeBased'){
+  output <- sdata
 }
 
-## 4. RARE-LEVEL INDICATION
-# TODO: RADO
 
-
-## 6. SAVE
-print("Writting the output file...")
-write.table(datta, file = outputFile, sep = ",")
-print('Over and out!')
+# --------------------------------------------------------------------------------------------------
+#                                     --- SAVING ---
+# --------------------------------------------------------------------------------------------------
+# save output
+write.csv(output, file=outputFile, row.names = F)
 
  
 

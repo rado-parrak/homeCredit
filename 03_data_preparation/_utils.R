@@ -128,26 +128,36 @@ castVariables <- function(inputData){
   qnames        <- c(qnames, colnames(dplyr::select(inputData, dplyr::starts_with('T_'))))
   outputData_q  <- as.data.frame(sapply(inputData[,qnames], as.numeric))
   
+  if(length(qnames)>0)
+    outputData  <- outputData_q
+  
   # factors: Target, Indicators, Categorical Nominal 
   fnames        <- colnames(dplyr::select(inputData, dplyr::starts_with('I_')))
   fnames        <- c(fnames, colnames(dplyr::select(inputData, dplyr::starts_with('CN_'))))
   outputData_f  <- as.data.frame(sapply(inputData[,fnames], as.factor))
+  
+  if(length(fnames)>0)
+    outputData  <- cbind(outputData, outputData_f)
   
   # ordinals:
   # TODO: See how this can be done such that we're sure that the order is correct
   onames        <- colnames(dplyr::select(inputData, dplyr::starts_with('CO_'), dplyr::starts_with('B_')))
   outputData_o  <- as.data.frame(sapply(inputData[,onames], as.ordered))
   
+  if(length(onames)>0)
+    outputData  <- cbind(outputData, outputData_o)
+  
   allnames <- c(qnames,fnames,onames)
   print(paste0(length(allnames), ' variables casted from ', length(colnames(inputData)),'!'))
-  return(cbind(outputData_q, outputData_f, outputData_o))
+  
+  return(outputData)
 }
 
 # doSmBinning wraper for paralelization
 doSmBinning <- function(type,varName, inputData,pVal,IVtresh, filePath){
   set.seed(21)
   cat(paste0(Sys.time()," | SM Binning, calculating WOE and IV for: ", varName, '\n'), file = filePath, append = TRUE)
-  
+  browser()
   res <- tryCatch(
     if(type == 'q'){
       inputData[,varName] <- as.numeric(inputData[,varName])
